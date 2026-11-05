@@ -1,0 +1,6 @@
+{
+  "guardianUrl": "http://acs-guardian:8787/acs",
+  "hmacKeyId": "pms-concierge",
+  "hmacSecretFile": "/run/secrets/acs-hmac",
+  "failurePosture": "closed"
+}

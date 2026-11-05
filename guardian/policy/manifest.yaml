@@ -1,0 +1,50 @@
+# The host's assistant on AGT. Every tool is targeted by its name, so a tool
+# with no argument is governed too. The agent writes only through `message`,
+# so the call is where every reply is decided.
+# The booking system's MCP tools (server `pms`) are named as OpenClaw names them, `pms__<action>`
+# with the dots turned into hyphens; OpenClaw's own tools by their own names.
+# A tool not listed here is refused by the Guardian before the rules run.
+agent_control_specification_version: "0.3.1-beta"
+metadata:
+  name: "pms-host-assistant"
+policies:
+  assistant:
+    type: rego
+    bundle: lib
+    query: data.assistant.verdict
+intervention_points:
+  pre_tool_call:
+    policy_target: "$.tool_call.name"
+    policy_target_kind: tool_name
+    tool_name_from: "$.tool_call.name"
+    policy: {id: assistant}
+  # A tool's result, before the model reads it: a guest's booking lookup
+  # returns only the sender's own bookings.
+  post_tool_call:
+    policy_target: "$.tool_call.name"
+    policy_target_kind: tool_name
+    tool_name_from: "$.tool_call.name"
+    policy: {id: assistant}
+tools:
+  pms__pms-listing-get_guide: {type: Tool}
+  pms__pms-extra-list: {type: Tool}
+  pms__pms-reservation-find_by_phone: {type: Tool}
+  pms__pms-reservation-find_by_ref: {type: Tool}
+  pms__pms-listing-get_access: {type: Tool}
+  pms__pms-extra-order: {type: Tool}
+  pms__pms-host-list_reservations: {type: Tool}
+  pms__pms-host-get_earnings: {type: Tool}
+  pms__pms-host-get_auto_reply: {type: Tool}
+  pms__pms-host-set_auto_reply: {type: Tool}
+  message: {type: Tool}
+  exec: {type: Tool}
+  read: {type: Tool}
+  write: {type: Tool}
+  edit: {type: Tool}
+  memory_search: {type: Tool}
+  memory_get: {type: Tool}
+  automations: {type: Tool}
+  cron: {type: Tool}
+  sessions_list: {type: Tool}
+  sessions_history: {type: Tool}
+  web_search: {type: Tool}

@@ -1,0 +1,14 @@
+# The ACS Go Guardian of PR #169. Selected by GUARDIAN=go in .env.
+services:
+  acs-guardian:
+    build:
+      context: https://github.com/disciplinedware/agent-control-standard.git?branch=refimpl/go-port&checksum=e35360377ef50f0454e7ea38d6b9369e37170608
+      dockerfile: reference-implementations/agt-go/Dockerfile
+      additional_contexts:
+        # GitHub refuses the git 2.39 of bookworm over HTTP/2 when the build
+        # fetches the AGT source; the same Rust release on trixie fetches it.
+        "rust:1.99.0-bookworm": docker-image://rust:1.99.0-trixie@sha256:81015672d6939b0265f09adf96d5de125482bb1330106076956b0518e74edc90
+    entrypoint: ["/app/acs-guardian", "--config", "/deployment/guardian.yaml"]
+    environment:
+      ACS__POLICY__DEPLOYMENT_DIR: /deployment
+

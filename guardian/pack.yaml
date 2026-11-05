@@ -1,0 +1,10 @@
+# The host assistant's settings that are not the host's phones or key: what
+# counts as an important answer, and how long the Guardian waits for
+# the booking system's live read. openclaw/setup.sh writes them, with the phones,
+# the booking system's URL and the connect key, into the policy data (data.pack).
+# Stems, letters only: each matches at a word start (rule 5).
+important_words: [reembols, refund, reimburs, devoluci, descuent, discount, rebaj, cancel, compens, gratis, gratuit, free, complimentar, waiv, возврат, скидк, отмен, компенс, бесплатн]
+guest_permissions_timeout: 2s
+# Where OpenClaw keeps the files guests send (<state dir>/media/inbound): the
+# only local files a guest's chat may send a guest.
+inbound_media_dir: /home/node/.openclaw/media/inbound

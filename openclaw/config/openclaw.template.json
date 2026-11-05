@@ -1,0 +1,234 @@
+{
+  "gateway": {
+    "mode": "local",
+    "bind": "lan",
+    "port": 18789,
+    "auth": {
+      "mode": "token",
+      "token": "${OPENCLAW_GATEWAY_TOKEN}"
+    }
+  },
+  "acp": {
+    "enabled": false
+  },
+  "agents": {
+    "ownership": "explicit",
+    "defaults": {
+      "skipBootstrap": true,
+      "userTimezone": "America/Cancun",
+      "authInheritance": {
+        "agentId": "assistant"
+      },
+      "heartbeat": {
+        "every": "0m"
+      },
+      "model": {
+        "primary": "@AGENT_MODEL@"
+      },
+      "utilityModel": "@AGENT_MODEL@",
+      "systemAgent": {
+        "agentId": "assistant"
+      },
+      "modelPolicy": {
+        "allow": ["@AGENT_MODEL@"]
+      },
+      "thinkingDefault": "medium",
+      "typingMode": "never",
+      "models": {
+        "@AGENT_MODEL@": {
+          "agentRuntime": {
+            "id": "openclaw"
+          }
+        }
+      }
+    },
+    "entries": {
+      "assistant": {
+        "workspace": "/opt/demo/workspace",
+        "params": {
+          "parallel_tool_calls": false
+        },
+        "memory": {
+          "search": {
+            "rememberAcrossConversations": false
+          }
+        },
+        "tools": {
+          "deny": [
+            "group:runtime",
+            "pms__pms-host-list_reservations",
+            "group:memory",
+            "group:fs",
+            "group:automation",
+            "sessions_list",
+            "sessions_history",
+            "web_search"
+          ]
+        }
+      },
+      "host": {
+        "workspace": "/opt/demo/workspace-host",
+        "agentDir": "/home/node/.openclaw/agents/host/agent",
+        "typingMode": "instant"
+      }
+    }
+  },
+  "session": {
+    "dmScope": "per-account-channel-peer"
+  },
+  "messages": {
+    "visibleReplies": "message_tool",
+    "queue": {
+      "byChannel": { "whatsapp": "interrupt" }
+    }
+  },
+  "commands": {
+    "ownerAllowFrom": ["whatsapp:@PERSONAL_PHONE@"],
+    "allowFrom": {
+      "whatsapp": []
+    }
+  },
+  "channels": {
+    "whatsapp": {
+      "enabled": @WHATSAPP_ENABLED@,
+      "groupPolicy": "disabled",
+      "dmPolicy": "@DM_POLICY@",
+      "allowFrom": @ALLOW_FROM@,
+      "selfChatMode": false,
+      "sendReadReceipts": false,
+      "pluginHooks": {
+        "messageReceived": true
+      }
+    }
+  },
+  "mcp": {
+    "servers": {
+      "pms": {
+        "url": "${PMS_MCP_URL}",
+        "transport": "streamable-http",
+        "headers": {
+          "Authorization": "Bearer ${PMS_API_KEY}"
+        }
+      }
+    }
+  },
+  "tools": {
+    "media": {
+      "audio": {
+        "enabled": false
+      }
+    },
+    "allow": [
+      "pms__*",
+      "message",
+      "read",
+      "write",
+      "edit",
+      "memory_search",
+      "memory_get",
+      "automations",
+      "sessions_list",
+      "sessions_history",
+      "web_search"
+    ],
+    "deny": [
+      "group:runtime",
+      "sessions_send",
+      "sessions_spawn",
+      "sessions_yield",
+      "subagents",
+      "session_status",
+      "apply_patch"
+    ],
+    "sessions": {
+      "visibility": "all"
+    },
+    "web": {
+      "search": { "enabled": true, "provider": "parallel-free" },
+      "fetch": { "enabled": false }
+    },
+    "agentToAgent": {
+      "enabled": true,
+      "allow": ["assistant", "host"]
+    },
+    "fs": {
+      "workspaceOnly": true
+    },
+    "toolSearch": false,
+    "codeMode": false
+  },
+  "cron": {
+    "enabled": true,
+    "triggers": {
+      "enabled": false
+    }
+  },
+  "plugins": {
+    "allow": [
+      "whatsapp-for-business",
+      "acs-guardian-client",
+      "anthropic",
+      "memory-core",
+      "parallel"
+    ],
+    "load": {
+      "paths": [
+        "/opt/openclaw-plugins/node_modules/@disciplinedware/whatsapp-for-business",
+        "/opt/openclaw-plugins/node_modules/@openclaw/parallel-plugin",
+        "/opt/acs/adapters/openclaw"
+      ]
+    },
+    "entries": {
+      "whatsapp-for-business": {
+        "enabled": true,
+        "config": {
+          "approvalLanguage": "es",
+          "approvalUnansweredMessageLimit": 10,
+          "execApprovals": {
+            "notifyOrigin": false
+          }
+        }
+      },
+      "parallel": {
+        "enabled": true
+      },
+      "memory-core": {
+        "enabled": true,
+        "config": {
+          "dreaming": {
+            "enabled": false
+          }
+        }
+      },
+      "acs-guardian-client": {
+        "enabled": true,
+        "hooks": {
+          "allowConversationAccess": true
+        },
+        "config": {
+          "$include": "./guardian.json",
+          "auditLog": "/home/node/.openclaw/acs/audit.jsonl"
+        }
+      }
+    }
+  },
+  "bindings": [
+    {
+      "agentId": "host",
+      "match": {
+        "channel": "whatsapp",
+        "peer": {
+          "kind": "direct",
+          "id": "@PERSONAL_PHONE@"
+        }
+      }
+    },
+    {
+      "agentId": "assistant",
+      "match": {
+        "channel": "whatsapp",
+        "accountId": "*"
+      }
+    }
+  ]
+}

@@ -1,0 +1,95 @@
+services:
+  opa:
+    image: openpolicyagent/opa:0.70.0@sha256:2b1c4b231f6dfa6a2baea4af4109203b10cd4b65e836d72f03bfe5d8dfce7095
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    working_dir: /workspace
+    volumes:
+      - type: bind
+        source: ./policy/lib
+        target: /workspace/guardian/policy/lib
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./test
+        target: /workspace/guardian/test
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./cases
+        target: /workspace/guardian/cases
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./testdata
+        target: /workspace/guardian/testdata
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../tmp/guardian-test
+        target: /workspace/tmp/guardian-test
+        read_only: true
+        bind:
+          create_host_path: false
+
+  # The live contract test: the rules call a running fake PMS.
+  opa-live:
+    image: openpolicyagent/opa:0.70.0@sha256:2b1c4b231f6dfa6a2baea4af4109203b10cd4b65e836d72f03bfe5d8dfce7095
+    read_only: true
+    cap_drop: [ALL]
+    working_dir: /workspace
+    volumes:
+      - type: bind
+        source: ./policy/lib
+        target: /workspace/guardian/policy/lib
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./test-live
+        target: /workspace/guardian/test-live
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../tmp/guardian-test
+        target: /workspace/tmp/guardian-test
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      fake-pms:
+        condition: service_healthy
+
+  fake-pms:
+    build: ../fake-pms
+    read_only: true
+    cap_drop: [ALL]
+    environment:
+      PMS_LISTEN_ADDR: ":8080"
+      PMS_BOOKINGS_FILE: /data/bookings.json
+      PMS_API_KEY: test-key
+      PMS_READ_HEADER_TIMEOUT: 10s
+      PMS_READ_TIMEOUT: 30s
+      PMS_WRITE_TIMEOUT: 30s
+      PMS_IDLE_TIMEOUT: 2m
+      PMS_SHUTDOWN_GRACE: 10s
+      PMS_RELOAD_INTERVAL: 2s
+    volumes:
+      # The bookings guardian/test-live.sh wrote for today.
+      - type: bind
+        source: ../tmp/guardian-test/bookings
+        target: /data
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "/app/fake-pms", "healthcheck"]
+      interval: 1s
+      timeout: 5s
+      retries: 30

@@ -1,0 +1,58 @@
+# How a verdict of the host assistant's rules becomes an ACS decision, in the
+# format of the ACS reference mapping (reference-implementations/agt/mapping.yaml).
+# The two points the manifest governs, a tool call and its result; no tool takes
+# a policy-target argument (`default: null`), because the manifest targets the
+# tool name.
+acs_version: "0.1.0"
+agt_version: "0.3.1-beta"
+
+intervention_points:
+  pre_tool_call: { acs_method: "steps/toolCallRequest", policy_target_argument: { default: null } }
+  post_tool_call: { acs_method: "steps/toolCallResult" }
+
+verdicts:
+  allow: { decision: allow }
+  deny: { decision: deny }
+  escalate: { decision: ask }
+
+field_synthesis:
+  # The sentence the agent reads: the summary of the rule that decided.
+  reasoning:
+    source: verdict.message
+    template: "{detail}{summary}"
+    detail:
+      when_matches: "(?s)^(.+)$"
+      render: "{1}\n"
+      otherwise: ""
+    summaries:
+      default: "Las reglas del asistente deciden este paso."
+      agent_requested_approval: "El asistente pide revisión."
+      another_persons_reservation: "La reserva es de otra persona."
+      another_persons_access: "El acceso es de otra persona."
+      access_unverified: "No se pudo comprobar de quién es el acceso."
+      unreadable_result: "No se pudo leer la respuesta del sistema de reservas."
+      unknown_tool: "El asistente no tiene permiso para usar esta herramienta."
+      # AGT refuses a tool the manifest does not list before the rules run.
+      "runtime_error:tool_unknown": "El asistente no tiene permiso para usar esta herramienta."
+      not_the_sender: "La acción nombra otro teléfono, chat o reserva; no se permite."
+      sender_not_a_phone: "No se pudo identificar el teléfono del remitente; la acción no se permite."
+      target_not_e164: "Indica el destinatario con + y dígitos, por ejemplo +447700900002, o usa owner para el anfitrión."
+      owner_only: "Solo el anfitrión puede usar esta herramienta."
+      unknown_argument: "Un mensaje al huésped contiene argumentos que no se permiten."
+      local_file: "Solo se permite enviar al huésped un enlace web o un archivo recibido de un huésped."
+      guest_message_actions_only: "En el chat de un huésped solo se permite enviar mensajes o reaccionar a ellos."
+      other_persons_data: "El mensaje contiene datos de otra persona; no se envía."
+      pms_unreachable: "No se pudo consultar el sistema de reservas; decide el anfitrión."
+      auto_reply_guests_off: "Respuestas automáticas apagadas."
+      auto_reply_others_off: "Respuestas automáticas apagadas."
+      auto_reply_change: "El anfitrión debe aprobar el cambio de respuesta automática."
+      important_answer: "La respuesta habla de dinero o de un asunto que requiere aprobación."
+      review_owner_chat_message: "Confirma el texto final."
+  reason_codes:
+    source: verdict.reason
+    wrap: array
+  policy_references:
+    rule_id:
+      source: verdict.reason
+    policy_id:
+      literal: assistant

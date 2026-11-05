@@ -1,0 +1,461 @@
+# The host assistant's rules, case by case. The rules' OPA tests read it
+# (guardian/test.sh).
+#
+# A case is one step: `point` (pre_tool_call, or post_tool_call with the tool's
+# `result`), the `actor` who sent the turn, the `tool` and its `args`, and what the booking system's live
+# read answers (`guest_permissions`): one view for every phone the step reaches, or
+# a phone's own under `guests`. `expect` is allow, {deny: reason} or
+# {ask: reason}.
+
+pack:
+  personal_phone: "+79990000001"
+  business_phone: "+529980000300"
+  pms_url: "http://fake-pms:8080"
+  connect_key: "dcl_test"
+  guest_permissions_timeout: "2s"
+  inbound_media_dir: /home/node/.openclaw/media/inbound
+  important_words: [reembols, refund, reimburs, devoluci, descuent, discount, rebaj, cancel, compens, gratis, gratuit, free, complimentar, waiv, возврат, скидк, отмен, компенс, бесплатн]
+
+actors:
+  owner: "+79990000001"
+  maria: "+529980000102"
+  maria_legacy: "+5219980000102"
+  luis: "+529980000103"
+  # Holds no stay with the business: a friend writing to the business number.
+  stranger: "+529980000109"
+  not_a_phone: "maria"
+
+guest_permissions:
+  # Maria has arrived at Casa Coral and paid; her stay at Casita Coral is not
+  # paid yet, booked on Booking.com, whose reservation numbers are 10 digits.
+  # Luis holds E2E-1051.
+  maria:
+    reachable: true
+    auto_reply: {guests: true, others: false}
+    references:
+      - {value: E2E-1042, own: true}
+      - {value: BK-4410021, own: true}
+      - {value: E2E-1043, own: true}
+      - {value: "4410021334", own: true}
+      - {value: E2E-1051, own: false}
+    secrets:
+      - {value: "4821", allowed: true}
+      - {value: arrecife-2026, allowed: true}
+      - {value: "7316", allowed: false}
+      - {value: arrecife-2026-b, allowed: false}
+  maria_auto_reply_off:
+    reachable: true
+    auto_reply: {guests: false, others: true}
+    references: [{value: E2E-1042, own: true}]
+    secrets: []
+  unreachable:
+    reachable: false
+  # Her own Wi-Fi password holds another house's: hers covers it.
+  nested_wifi:
+    reachable: true
+    auto_reply: {guests: true, others: false}
+    references: [{value: E2E-1042, own: true}]
+    secrets:
+      - {value: arrecife-2026-b, allowed: true}
+      - {value: arrecife-2026, allowed: false}
+  # A broken entry for the guest: no different from no answer.
+  corrupt_entry:
+    reachable: true
+    auto_reply: {guests: true, others: true}
+    entry: corrupt
+  # A person with no stay: every reference is another guest's.
+  no_stay:
+    reachable: true
+    auto_reply: {guests: true, others: false}
+    references: [{value: E2E-1051, own: false}]
+    secrets: [{value: "7316", allowed: false}]
+  # The host lets the assistant answer people without a stay too.
+  no_stay_others_on:
+    reachable: true
+    auto_reply: {guests: false, others: true}
+    references: [{value: E2E-1051, own: false}]
+    secrets: [{value: "7316", allowed: false}]
+  # María holds a stay; the stranger, reached by the same message, holds none.
+  maria_and_a_stranger:
+    reachable: true
+    auto_reply: {guests: true, others: false}
+    references: [{value: E2E-1042, own: true}]
+    secrets: []
+    guests:
+      "+529980000109": {references: [{value: E2E-1042, own: false}], secrets: []}
+  maria_and_a_stranger_others_on:
+    reachable: true
+    auto_reply: {guests: true, others: true}
+    references: [{value: E2E-1042, own: true}]
+    secrets: []
+    guests:
+      "+529980000109": {references: [{value: E2E-1042, own: false}], secrets: []}
+  # Answers that name no switches: a missing switch counts as off.
+  no_switch:
+    reachable: true
+    references: [{value: E2E-1042, own: true}]
+    secrets: []
+  no_switch_no_stay:
+    reachable: true
+    auto_reply: {guests: true}
+    references: []
+    secrets: []
+
+cases:
+  - {name: agent_requests_approval_with_guest_auto_reply_on, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "El check-in es a las 15:00.", requestApproval: true}, guest_permissions: maria, expect: {ask: agent_requested_approval}}
+  - {name: agent_requests_approval_with_others_auto_reply_on, point: pre_tool_call, actor: stranger, tool: message, args: {action: send, message: "Hola", requestApproval: true}, guest_permissions: no_stay_others_on, expect: {ask: agent_requested_approval}}
+  - {name: agent_requests_approval_in_owner_chat, point: pre_tool_call, actor: owner, tool: message, args: {action: send, target: "+529980000102", message: "Hola", requestApproval: true}, guest_permissions: maria, expect: {ask: agent_requested_approval}}
+  - {name: agent_requests_approval_with_auto_reply_off, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Hola", requestApproval: true}, guest_permissions: maria_auto_reply_off, expect: {ask: agent_requested_approval}}
+  - {name: approval_not_requested_keeps_guest_auto_reply, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Hola", requestApproval: false}, guest_permissions: maria, expect: allow}
+  - {name: approval_not_requested_does_not_bypass_manual_mode, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Hola", requestApproval: false}, guest_permissions: maria_auto_reply_off, expect: {ask: auto_reply_guests_off}}
+  - {name: approval_request_does_not_override_private_data_refusal, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "El código es 7316.", requestApproval: true}, guest_permissions: maria, expect: {deny: other_persons_data}}
+  - {name: approval_request_does_not_override_recipient_refusal, point: pre_tool_call, actor: maria, tool: message, args: {action: send, target: "+529980000103", message: "Hola", requestApproval: true}, guest_permissions: maria, expect: {deny: not_the_sender}}
+  - {name: agent_requests_approval_before_sending_to_host, point: pre_tool_call, actor: maria, tool: message, args: {action: send, target: owner, message: "¿Confirmas?", requestApproval: true}, guest_permissions: maria, expect: {ask: agent_requested_approval}}
+  # --- Rule 1: a phone argument is the sender; a guest's chat writes to that
+  # guest or the owner, the owner's chat to anyone.
+  - {name: guest_finds_her_own_stays, point: pre_tool_call, actor: maria, tool: pms__pms-reservation-find_by_phone, args: {guest_phone: "+529980000102"}, expect: allow}
+  - {name: guest_phone_written_with_spaces, point: pre_tool_call, actor: maria, tool: pms__pms-reservation-find_by_phone, args: {guest_phone: "998 000 0102"}, expect: allow}
+  - {name: legacy_sender_form_is_the_same_guest, point: pre_tool_call, actor: maria_legacy, tool: pms__pms-reservation-find_by_phone, args: {guest_phone: "+529980000102"}, expect: allow}
+  - {name: guest_asks_for_another_phone, point: pre_tool_call, actor: luis, tool: pms__pms-reservation-find_by_phone, args: {guest_phone: "+529980000102"}, expect: {deny: not_the_sender}}
+  - {name: guest_orders_on_another_phone, point: pre_tool_call, actor: luis, tool: pms__pms-extra-order, args: {guest_phone: "+529980000102", reservation_ref: E2E-1042, extra_code: airport-transfer, service_at: "2026-11-11T10:00:00Z"}, expect: {deny: not_the_sender}}
+  - {name: a_sender_that_is_no_phone, point: pre_tool_call, actor: not_a_phone, tool: pms__pms-reservation-find_by_phone, args: {guest_phone: "+529980000102"}, expect: {deny: not_the_sender}}
+  - {name: a_sender_that_is_no_phone_sends, point: pre_tool_call, actor: not_a_phone, tool: message, args: {action: send, message: "El código de Casita es 7316."}, guest_permissions: maria, expect: {deny: sender_not_a_phone}}
+  - {name: guest_tool_without_a_phone, point: pre_tool_call, actor: maria, tool: pms__pms-reservation-find_by_phone, args: {}, expect: {deny: not_the_sender}}
+  - {name: guest_tool_with_a_bad_phone, point: pre_tool_call, actor: maria, tool: pms__pms-reservation-find_by_phone, args: {guest_phone: "998000010"}, expect: {deny: not_the_sender}}
+  - {name: guest_asks_for_access, point: pre_tool_call, actor: maria, tool: pms__pms-listing-get_access, args: {listing_id: "00000000-0000-4000-8000-000000000001"}, expect: allow}
+  - {name: guest_reads_the_guide, point: pre_tool_call, actor: maria, tool: pms__pms-listing-get_guide, args: {listing_id: "00000000-0000-4000-8000-000000000001"}, expect: allow}
+  - {name: message_to_the_sender_by_name, point: pre_tool_call, actor: maria, tool: message, args: {action: send, target: "+529980000102", message: "Llegamos a las 3"}, guest_permissions: maria, expect: allow}
+  - {name: reply_context_is_an_unknown_argument, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Llegamos a las 3", replyContext: "Pregunta la hora de llegada."}, guest_permissions: maria, expect: {deny: unknown_argument}}
+  - {name: message_with_an_empty_target, point: pre_tool_call, actor: maria, tool: message, args: {action: send, target: null, message: "Llegamos a las 3"}, guest_permissions: maria, expect: allow}
+  - {name: message_to_another_person_by_to, point: pre_tool_call, actor: maria, tool: message, args: {action: send, to: "+529980000103", message: "Hola"}, guest_permissions: maria, expect: {deny: not_the_sender}}
+  - {name: message_to_another_person_by_channel_id, point: pre_tool_call, actor: maria, tool: message, args: {action: send, channelId: "+529980000103", message: "Hola"}, guest_permissions: maria, expect: {deny: not_the_sender}}
+  - {name: owner_message_to_a_guest_by_to, point: pre_tool_call, actor: owner, tool: message, args: {action: send, to: "+529980000102", message: "El código de Casita es 7316."}, guest_permissions: maria, expect: {deny: other_persons_data}}
+  - {name: message_to_another_person, point: pre_tool_call, actor: maria, tool: message, args: {action: send, target: "+529980000103", message: "Hola"}, guest_permissions: maria, expect: {deny: not_the_sender}}
+  - {name: guest_message_to_herself_in_a_list, point: pre_tool_call, actor: maria, tool: message, args: {action: send, targets: ["+529980000102"], message: "Hola"}, guest_permissions: maria, expect: allow}
+  - {name: guest_message_to_herself_and_another, point: pre_tool_call, actor: maria, tool: message, args: {action: send, targets: ["+529980000102", "+529980000103"], message: "Hola"}, guest_permissions: maria, expect: {deny: not_the_sender}}
+  - {name: guest_chat_forwards_to_the_owner, point: pre_tool_call, actor: maria, tool: message, args: {action: send, target: "+79990000001", message: "María encontró una cucaracha en Casa Coral (E2E-1042). Sugiero: «Lo siento, mando fumigación hoy a las 15:00, con 10% de descuento.» Luis (E2E-1051) se queja de lo mismo.", media: "/home/node/.openclaw/media/inbound/cucaracha.jpg"}, expect: allow}
+  - {name: guest_phone_of_the_wrong_length, point: pre_tool_call, actor: maria, tool: pms__pms-reservation-find_by_phone, args: {guest_phone: "+5212345678"}, expect: {deny: not_the_sender}}
+  - {name: guest_chat_to_a_mexican_number_with_wrong_digits, point: pre_tool_call, actor: maria, tool: message, args: {action: send, target: "+5212345678", message: "Hola"}, guest_permissions: maria, expect: {deny: target_not_e164}}
+  - {name: owner_chat_to_a_mexican_number_with_wrong_digits, point: pre_tool_call, actor: owner, tool: message, args: {action: send, target: "+5212345678", message: "Hola"}, guest_permissions: maria, expect: {deny: target_not_e164}}
+  - {name: guest_chat_forwards_to_owner_by_name, point: pre_tool_call, actor: maria, tool: message, args: {action: send, target: owner, message: "María pregunta por un descuento (E2E-1042). Sugiero: «Lo consulto»."}, expect: allow}
+  - {name: guest_chat_to_owner_by_name_and_another, point: pre_tool_call, actor: maria, tool: message, args: {action: send, targets: [owner, "+529980000103"], message: "Hola"}, guest_permissions: maria, expect: {deny: not_the_sender}}
+  - {name: owner_chat_writes_to_owner_by_name, point: pre_tool_call, actor: owner, tool: message, args: {action: send, target: owner, message: "Recordatorio: llamar a María"}, expect: allow}
+  - {name: owner_name_in_another_case_is_no_target, point: pre_tool_call, actor: maria, tool: message, args: {action: send, target: Owner, message: "Hola"}, expect: {deny: target_not_e164}}
+  - {name: guest_chat_to_the_owner_and_another, point: pre_tool_call, actor: maria, tool: message, args: {action: send, targets: ["+79990000001", "+529980000103"], message: "Hola"}, guest_permissions: maria, expect: {deny: not_the_sender}}
+  - {name: owner_target_with_spaces, point: pre_tool_call, actor: owner, tool: message, args: {action: send, target: "+52 998 000 0102", message: "Hola"}, guest_permissions: maria, expect: {deny: target_not_e164}}
+  - {name: owner_target_with_a_channel_prefix, point: pre_tool_call, actor: owner, tool: message, args: {action: send, target: "whatsapp:+529980000102", message: "Hola"}, guest_permissions: maria, expect: {deny: target_not_e164}}
+  - {name: owner_message_to_himself_and_a_guest, point: pre_tool_call, actor: owner, tool: message, args: {action: send, targets: ["+79990000001", "+529980000102"], message: "María (+529980000102), llámame al +7 999 000 0001"}, guest_permissions: maria, expect: {ask: review_owner_chat_message}}
+  - {name: owner_target_as_a_number, point: pre_tool_call, actor: owner, tool: message, args: {action: send, target: 529980000102, message: "Hola"}, guest_permissions: maria, expect: {deny: target_not_e164}}
+  - {name: owner_targets_with_a_number, point: pre_tool_call, actor: owner, tool: message, args: {action: send, targets: [529980000102], message: "Hola"}, guest_permissions: maria, expect: {deny: target_not_e164}}
+  - {name: owner_targets_as_an_object, point: pre_tool_call, actor: owner, tool: message, args: {action: send, targets: {"+529980000102": true}, message: "Hola"}, guest_permissions: maria, expect: {deny: target_not_e164}}
+  - {name: guest_targets_as_an_object, point: pre_tool_call, actor: maria, tool: message, args: {action: send, targets: {"+529980000103": true}, message: "Hola"}, guest_permissions: maria, expect: {deny: target_not_e164}}
+  - {name: a_broken_guest_entry_is_unreachable, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "El código de Casita es 7316."}, guest_permissions: corrupt_entry, expect: {ask: pms_unreachable}}
+  - {name: owner_message_to_a_guest, point: pre_tool_call, actor: owner, tool: message, args: {action: send, target: "+529980000102", message: "Hola María, el técnico llega a las 15:00"}, guest_permissions: maria, expect: {ask: review_owner_chat_message}}
+  - {name: owner_message_to_many, point: pre_tool_call, actor: owner, tool: message, args: {action: send, targets: ["+529980000102", "+529980000103"], message: "Mañana cortan el agua de 9 a 11"}, guest_permissions: maria, expect: {ask: review_owner_chat_message}}
+  - {name: owner_sends_a_guest_a_photo, point: pre_tool_call, actor: owner, tool: message, args: {action: send, target: "+529980000102", message: "Las llaves están aquí", media: "memory/owner/llaves.jpg"}, guest_permissions: maria, expect: {ask: review_owner_chat_message}}
+  - {name: owner_gives_a_discount, point: pre_tool_call, actor: owner, tool: message, args: {action: send, target: "+529980000102", message: "Te hago un 10% de descuento, $500 menos."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: owner_gives_his_phone, point: pre_tool_call, actor: owner, tool: message, args: {action: send, target: "+529980000102", message: "Llámame al +7 999 000 0001"}, guest_permissions: maria, expect: {ask: review_owner_chat_message}}
+  - {name: owner_message_to_a_guest_without_auto_reply, point: pre_tool_call, actor: owner, tool: message, args: {action: send, target: "+529980000102", message: "Hola María"}, guest_permissions: maria_auto_reply_off, expect: {ask: auto_reply_guests_off}}
+  - {name: owner_message_to_a_guest_pms_down, point: pre_tool_call, actor: owner, tool: message, args: {action: send, target: "+529980000102", message: "Hola María"}, guest_permissions: unreachable, expect: {ask: pms_unreachable}}
+  - {name: owner_message_carries_another_guests_code, point: pre_tool_call, actor: owner, tool: message, args: {action: send, target: "+529980000102", message: "El código de Casita es 7316."}, guest_permissions: maria, expect: {deny: other_persons_data}}
+  - {name: owner_reads_a_guests_stays, point: pre_tool_call, actor: owner, tool: pms__pms-reservation-find_by_phone, args: {guest_phone: "+529980000102"}, expect: allow}
+  - {name: message_to_another_channel, point: pre_tool_call, actor: maria, tool: message, args: {action: send, channel: telegram, message: "Hola"}, guest_permissions: maria, expect: {deny: not_the_sender}}
+
+  # A guest's booking lookup returns only the sender's own bookings: checked on
+  # the result, before the model reads it.
+  - {name: guest_reads_her_own_booking, point: post_tool_call, actor: maria, tool: pms__pms-reservation-find_by_ref, result: {status: completed, result: {reservations: [{reservation_ref: E2E-1042, guest_name: Maria, guest_phone: "+529980000102"}]}}, expect: allow}
+  - {name: guest_reads_her_own_booking_in_the_older_mexican_form, point: post_tool_call, actor: maria_legacy, tool: pms__pms-reservation-find_by_ref, result: {status: completed, result: {reservations: [{reservation_ref: E2E-1042, guest_phone: "+529980000102"}]}}, expect: allow}
+  - {name: another_guests_booking_is_withheld, point: post_tool_call, actor: maria, tool: pms__pms-reservation-find_by_ref, result: {status: completed, result: {reservations: [{reservation_ref: E2E-1051, guest_name: Luis, guest_phone: "+529980000103"}]}}, expect: {deny: another_persons_reservation}}
+  - {name: a_booking_without_a_phone_is_withheld, point: post_tool_call, actor: maria, tool: pms__pms-reservation-find_by_ref, result: {status: completed, result: {reservations: [{reservation_ref: E2E-1051}]}}, expect: {deny: another_persons_reservation}}
+  - {name: a_lookup_by_phone_is_checked_alike, point: post_tool_call, actor: maria, tool: pms__pms-reservation-find_by_phone, result: {status: completed, result: {reservations: [{reservation_ref: E2E-1042, guest_phone: "+529980000102"}, {reservation_ref: E2E-1051, guest_phone: "+529980000103"}]}}, expect: {deny: another_persons_reservation}}
+  - {name: a_stranger_reads_another_guests_booking, point: post_tool_call, actor: stranger, tool: pms__pms-reservation-find_by_ref, result: {status: completed, result: {reservations: [{reservation_ref: E2E-1042, guest_phone: "+529980000102"}]}}, expect: {deny: another_persons_reservation}}
+  - {name: the_owner_reads_any_booking, point: post_tool_call, actor: owner, tool: pms__pms-reservation-find_by_ref, result: {status: completed, result: {reservations: [{reservation_ref: E2E-1051, guest_phone: "+529980000103"}]}}, expect: allow}
+  - {name: a_lookup_that_found_nothing_passes, point: post_tool_call, actor: maria, tool: pms__pms-reservation-find_by_ref, exit_status: failure, result: {status: failed, error: {type: /errors/pms.reservation_not_found}}, expect: allow}
+  - {name: an_unreadable_lookup_is_withheld, point: post_tool_call, actor: maria, tool: pms__pms-reservation-find_by_ref, raw: "no JSON here", expect: {deny: unreadable_result}}
+  - {name: a_lookup_as_bare_json_is_read, point: post_tool_call, actor: maria, tool: pms__pms-reservation-find_by_ref, raw: "{\"status\": \"completed\", \"result\": {\"reservations\": [{\"reservation_ref\": \"E2E-1051\", \"guest_phone\": \"+529980000103\"}]}}", expect: {deny: another_persons_reservation}}
+  - {name: a_failed_lookup_is_not_read, point: post_tool_call, actor: maria, tool: pms__pms-reservation-find_by_ref, exit_status: failure, raw: "structuredContent:\n{\"status\": \"failed\"}", expect: allow}
+  # get_access takes a house; the booking system's read for the sender decides whose its data is.
+  - {name: guest_reads_her_own_door_code, point: post_tool_call, actor: maria, guest_permissions: maria, tool: pms__pms-listing-get_access, result: {status: completed, result: {listing_name: Casa Coral, door_code: "4821", wifi_name: CasaCoral, wifi_password: arrecife-2026}}, expect: allow}
+  - {name: another_houses_door_code_is_withheld, point: post_tool_call, actor: maria, guest_permissions: maria, tool: pms__pms-listing-get_access, result: {status: completed, result: {listing_name: Casita Coral, door_code: "7316", wifi_name: CasitaCoral, wifi_password: arrecife-2026-b}}, expect: {deny: another_persons_access}}
+  - {name: a_code_the_booking_system_does_not_know_is_withheld, point: post_tool_call, actor: maria, guest_permissions: maria, tool: pms__pms-listing-get_access, result: {status: completed, result: {listing_name: Casa Nueva, door_code: "0000"}}, expect: {deny: another_persons_access}}
+  - {name: a_stranger_gets_no_door_code, point: post_tool_call, actor: stranger, guest_permissions: no_stay, tool: pms__pms-listing-get_access, result: {status: completed, result: {listing_name: Casa Coral, door_code: "4821"}}, expect: {deny: another_persons_access}}
+  - {name: access_without_the_booking_systems_answer_is_withheld, point: post_tool_call, actor: maria, guest_permissions: unreachable, tool: pms__pms-listing-get_access, result: {status: completed, result: {listing_name: Casa Coral, door_code: "4821"}}, expect: {deny: access_unverified}}
+  - {name: the_owner_reads_any_door_code, point: post_tool_call, actor: owner, tool: pms__pms-listing-get_access, result: {status: completed, result: {listing_name: Casita Coral, door_code: "7316"}}, expect: allow}
+  - {name: access_not_available_passes, point: post_tool_call, actor: maria, guest_permissions: maria, tool: pms__pms-listing-get_access, exit_status: failure, result: {status: failed, error: {type: /errors/pms.access_not_available}}, expect: allow}
+  - {name: an_unreadable_access_result_is_withheld, point: post_tool_call, actor: maria, guest_permissions: maria, tool: pms__pms-listing-get_access, raw: "no JSON here", expect: {deny: unreadable_result}}
+  - {name: another_tools_result_is_not_a_lookup, point: post_tool_call, actor: maria, tool: pms__pms-listing-get_guide, result: {status: completed, result: {listing_name: Casa Coral}}, expect: allow}
+  # --- Rule 2: the host's tools are the owner's; a guest only sends.
+  - {name: owner_lists_reservations, point: pre_tool_call, actor: owner, tool: pms__pms-host-list_reservations, args: {}, expect: allow}
+  - {name: owner_switches_auto_reply, point: pre_tool_call, actor: owner, tool: pms__pms-host-set_auto_reply, args: {guests: true}, expect: {ask: auto_reply_change}}
+  - {name: owner_switches_auto_reply_for_others, point: pre_tool_call, actor: owner, tool: pms__pms-host-set_auto_reply, args: {others: true}, expect: {ask: auto_reply_change}}
+  - {name: owner_reads_auto_reply, point: pre_tool_call, actor: owner, tool: pms__pms-host-get_auto_reply, args: {}, expect: allow}
+  - {name: guest_lists_reservations, point: pre_tool_call, actor: maria, tool: pms__pms-host-list_reservations, args: {}, expect: {deny: owner_only}}
+  - {name: guest_switches_auto_reply, point: pre_tool_call, actor: maria, tool: pms__pms-host-set_auto_reply, args: {guests: true}, expect: {deny: owner_only}}
+  - {name: guest_schedules_a_reminder, point: pre_tool_call, actor: maria, tool: automations, args: {action: list}, expect: {deny: owner_only}}
+  - {name: guest_reacts_to_her_message, point: pre_tool_call, actor: maria, tool: message, args: {action: react, target: "+529980000102", messageId: "ABCD1234567890", emoji: "👍"}, guest_permissions: maria, expect: allow}
+  - {name: guest_reaction_waits_for_host_when_auto_reply_is_off, point: pre_tool_call, actor: maria, tool: message, args: {action: react, target: "+529980000102", messageId: "ABCD1234567890", emoji: "👍"}, guest_permissions: maria_auto_reply_off, expect: {ask: auto_reply_guests_off}}
+  - {name: stranger_reaction_waits_for_host_when_auto_reply_is_off, point: pre_tool_call, actor: stranger, tool: message, args: {action: react, messageId: "ABCD1234567890", emoji: "👍"}, guest_permissions: no_stay, expect: {ask: auto_reply_others_off}}
+  - {name: stranger_reaction_uses_others_auto_reply_switch, point: pre_tool_call, actor: stranger, tool: message, args: {action: react, messageId: "ABCD1234567890", emoji: "👍"}, guest_permissions: no_stay_others_on, expect: allow}
+  - {name: owner_reaction_to_guest_still_waits_for_host, point: pre_tool_call, actor: owner, tool: message, args: {action: react, target: "+529980000102", messageId: "ABCD1234567890", emoji: "👍"}, guest_permissions: maria_auto_reply_off, expect: {ask: auto_reply_guests_off}}
+  - {name: guest_closing_reaction_as_the_agent_sends_it_waits_for_host, point: pre_tool_call, actor: maria, tool: message, args: {action: react, emoji: "🙏", final: true}, guest_permissions: maria_auto_reply_off, expect: {ask: auto_reply_guests_off}}
+  - {name: guest_reaction_cannot_request_send_approval, point: pre_tool_call, actor: maria, tool: message, args: {action: react, target: "+529980000102", messageId: "ABCD1234567890", emoji: "👍", requestApproval: true}, guest_permissions: maria, expect: {deny: unknown_argument}}
+  - {name: guest_reaction_cannot_remove_a_reaction, point: pre_tool_call, actor: maria, tool: message, args: {action: react, target: "+529980000102", messageId: "ABCD1234567890", emoji: "👍", remove: true}, guest_permissions: maria, expect: {deny: unknown_argument}}
+  - {name: guest_reaction_cannot_target_another_phone, point: pre_tool_call, actor: maria, tool: message, args: {action: react, target: "+529980000103", messageId: "ABCD1234567890", emoji: "👍"}, guest_permissions: maria, expect: {deny: not_the_sender}}
+  - {name: guest_reaction_cannot_expose_another_persons_secret, point: pre_tool_call, actor: maria, tool: message, args: {action: react, messageId: "ABCD1234567890", emoji: "7316"}, guest_permissions: maria, expect: {deny: other_persons_data}}
+  - {name: guest_message_rejects_unsupported_action, point: pre_tool_call, actor: maria, tool: message, args: {action: delete, target: "+529980000102", messageId: "ABCD1234567890"}, guest_permissions: maria, expect: {deny: guest_message_actions_only}}
+  - {name: guest_message_with_a_file, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Aquí tienes", media: "memory/owner/house-rules.md"}, guest_permissions: maria, expect: {deny: local_file}}
+  - {name: guest_attachment_naming_another_guest, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Aquí tienes", media: "/home/node/.openclaw/media/inbound/+529980000103.jpg"}, guest_permissions: maria, expect: {deny: other_persons_data}}
+  - {name: guest_message_with_a_picture_link, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Así es la entrada", media: "https://files.example.com/pms/fachada.jpg?X-Amz-Expires=900"}, guest_permissions: maria, expect: allow}
+  - {name: guest_message_with_an_attached_file, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Aquí tienes", attachments: [{type: document, media: "/home/node/workspace/memory/owner/notes.md"}]}, guest_permissions: maria, expect: {deny: local_file}}
+  - {name: guest_message_with_a_photo_link, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Así se ve la terraza", media: "https://files.example.com/f/terraza.jpg"}, guest_permissions: maria, expect: allow}
+  - {name: guest_message_with_her_own_photo, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Recibido", media: "/home/node/.openclaw/media/inbound/cucaracha.jpg"}, guest_permissions: maria, expect: allow}
+  - {name: guest_message_with_an_encoded_notes_link, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Aquí tienes", media: "file:///home/node/workspace/memor%79/owner/notes.md"}, guest_permissions: maria, expect: {deny: local_file}}
+  - {name: guest_message_with_the_prompt_file, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Aquí tienes", media: "/home/node/workspace/AGENTS.md"}, guest_permissions: maria, expect: {deny: local_file}}
+  - {name: guest_message_climbing_out_of_inbound_media, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Aquí tienes", media: "/home/node/.openclaw/media/inbound/../../openclaw.json"}, guest_permissions: maria, expect: {deny: local_file}}
+  - {name: guest_message_with_a_relative_path, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Aquí tienes", media: "notes.md"}, guest_permissions: maria, expect: {deny: local_file}}
+  - {name: guest_message_with_a_file_path, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Aquí tienes", filePath: "/home/node/workspace/memory/owner/notes.md"}, guest_permissions: maria, expect: {deny: unknown_argument}}
+  - {name: guest_message_with_a_path, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Aquí tienes", path: "memory/owner/notes.md"}, guest_permissions: maria, expect: {deny: unknown_argument}}
+  - {name: guest_message_with_a_media_url, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Aquí tienes", mediaUrl: "file:///home/node/workspace/memory/owner/notes.md"}, guest_permissions: maria, expect: {deny: unknown_argument}}
+  - {name: guest_message_with_an_image, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Aquí tienes", image: "memory/owner/llaves.jpg"}, guest_permissions: maria, expect: {deny: unknown_argument}}
+  - {name: guest_message_with_a_snake_case_path, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Aquí tienes", file_path: "memory/owner/notes.md"}, guest_permissions: maria, expect: {deny: unknown_argument}}
+  - {name: guest_message_with_an_attachment_path, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Aquí tienes", attachments: [{type: file, path: "memory/owner/notes.md"}]}, guest_permissions: maria, expect: {deny: unknown_argument}}
+  - {name: guest_message_with_a_single_attachment_object, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Aquí tienes", attachments: {media: "memory/owner/notes.md"}}, guest_permissions: maria, expect: {deny: unknown_argument}}
+  - {name: guest_message_with_a_caption_and_a_document, point: pre_tool_call, actor: maria, tool: message, args: {action: send, caption: "Guía de la casa", media: "https://files.example.com/f/guia.pdf", asDocument: true}, guest_permissions: maria, expect: allow}
+  - {name: guest_chat_sends_the_owner_his_notes, point: pre_tool_call, actor: maria, tool: message, args: {action: send, target: "+79990000001", message: "María pregunta por esto", media: "memory/owner/notes.md"}, expect: allow}
+  - {name: owner_message_with_a_file, point: pre_tool_call, actor: owner, tool: message, args: {action: send, message: "Tus notas", media: "memory/owner/notes.md"}, expect: allow}
+  - {name: a_tool_the_pack_does_not_name, point: pre_tool_call, actor: owner, tool: gateway, args: {action: config.apply}, expect: {deny: unknown_tool}}
+  - {name: the_host_runs_a_command, point: pre_tool_call, actor: owner, tool: exec, args: {command: "ls"}, expect: allow}
+  - {name: a_guest_runs_a_command, point: pre_tool_call, actor: maria, tool: exec, args: {command: "cat ~/.openclaw/openclaw.json"}, expect: {deny: owner_only}}
+
+  # --- Rule 2: memory and files are the owner's, and he uses them freely.
+  - {name: owner_writes_a_note, point: pre_tool_call, actor: owner, tool: write, args: {path: memory/owner/guests/+529980000102.md, content: "Prefiere toallas extra"}, expect: allow}
+  - {name: owner_reads_a_note, point: pre_tool_call, actor: owner, tool: memory_get, args: {path: memory/owner/notes.md}, expect: allow}
+  - {name: owner_searches_memory, point: pre_tool_call, actor: owner, tool: memory_search, args: {query: Maria}, expect: allow}
+  - {name: owner_writes_the_shared_memory, point: pre_tool_call, actor: owner, tool: write, args: {path: MEMORY.md, content: "Maria es difícil"}, expect: allow}
+  - {name: owner_reads_a_guests_chat, point: pre_tool_call, actor: owner, tool: sessions_history, args: {sessionKey: "agent:assistant:whatsapp:default:direct:+529980000102"}, expect: allow}
+  - {name: owner_lists_the_chats, point: pre_tool_call, actor: owner, tool: sessions_list, args: {}, expect: allow}
+  - {name: guest_reads_another_guests_chat, point: pre_tool_call, actor: maria, tool: sessions_history, args: {sessionKey: "agent:assistant:whatsapp:default:direct:+529980000103"}, expect: {deny: owner_only}}
+  - {name: guest_lists_the_chats, point: pre_tool_call, actor: maria, tool: sessions_list, args: {}, expect: {deny: owner_only}}
+  - {name: owner_searches_the_web, point: pre_tool_call, actor: owner, tool: web_search, args: {query: "farmacia Puerto Morelos"}, expect: allow}
+  - {name: owner_cannot_fetch_a_web_page, point: pre_tool_call, actor: owner, tool: web_fetch, args: {url: "https://example.com/?code=4821"}, expect: {deny: unknown_tool}}
+  - {name: guest_searches_the_web, point: pre_tool_call, actor: maria, tool: web_search, args: {query: "Casa Coral door code"}, expect: {deny: owner_only}}
+  - {name: guest_cannot_fetch_a_web_page, point: pre_tool_call, actor: maria, tool: web_fetch, args: {url: "https://example.com/"}, expect: {deny: unknown_tool}}
+  - {name: stranger_searches_the_web, point: pre_tool_call, actor: stranger, tool: web_search, args: {query: "hola"}, expect: {deny: owner_only}}
+  - {name: a_session_send, point: pre_tool_call, actor: owner, tool: sessions_send, args: {sessionKey: "x", message: "hola"}, expect: {deny: unknown_tool}}
+  - {name: guest_reads_memory, point: pre_tool_call, actor: maria, tool: memory_search, args: {query: Luis}, expect: {deny: owner_only}}
+  - {name: guest_reads_a_file, point: pre_tool_call, actor: maria, tool: read, args: {path: memory/owner/guests/+529980000103.md}, expect: {deny: owner_only}}
+
+  # --- The owner sets reminders anywhere.
+  - {name: owner_reminder_into_his_chat, point: pre_tool_call, actor: owner, tool: automations, args: {action: add, job: {sessionTarget: "session:agent:assistant:whatsapp:default:direct:+79990000001", schedule: {kind: at, at: "2026-11-11T09:00:00-05:00"}, payload: {kind: agentTurn, message: "Recordar a Maria"}}}, expect: allow}
+  - {name: owner_reminder_into_a_guests_chat, point: pre_tool_call, actor: owner, tool: automations, args: {action: add, job: {sessionTarget: "session:agent:assistant:whatsapp:default:direct:+529980000102", payload: {kind: agentTurn, message: "Hola"}}}, expect: allow}
+
+  # --- Rule 3: the two auto-reply switches, read live, decide from either
+  # chat: a guest's switch for a person with a stay, the others' switch for
+  # everyone else.
+  - {name: routine_answer_with_auto_reply, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "El check-in es a las 15:00."}, guest_permissions: maria, expect: allow}
+  - {name: routine_answer_without_auto_reply, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "El check-in es a las 15:00."}, guest_permissions: maria_auto_reply_off, expect: {ask: auto_reply_guests_off}}
+  - {name: an_answer_without_the_switch, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "El check-in es a las 15:00."}, guest_permissions: no_switch, expect: {ask: auto_reply_guests_off}}
+  - {name: a_person_without_a_stay_waits_for_the_owner, point: pre_tool_call, actor: stranger, tool: message, args: {action: send, message: "Ja, ja, me copia el estilo."}, guest_permissions: no_stay, expect: {ask: auto_reply_others_off}}
+  - {name: a_person_without_a_stay_with_the_others_switch_on, point: pre_tool_call, actor: stranger, tool: message, args: {action: send, message: "Sí, Casita Coral está libre en diciembre."}, guest_permissions: no_stay_others_on, expect: allow}
+  - {name: a_person_without_a_stay_and_no_others_switch, point: pre_tool_call, actor: stranger, tool: message, args: {action: send, message: "Hola"}, guest_permissions: no_switch_no_stay, expect: {ask: auto_reply_others_off}}
+  - {name: a_person_without_a_stay_may_be_referred_to_the_owner, point: pre_tool_call, actor: stranger, tool: message, args: {action: send, target: owner, message: "Te escribió el +52 998 000 0109."}, guest_permissions: no_stay, expect: allow}
+  - {name: the_owner_chat_writes_to_a_person_without_a_stay, point: pre_tool_call, actor: owner, tool: message, args: {action: send, target: "+529980000109", message: "Hola"}, guest_permissions: no_stay, expect: {ask: auto_reply_others_off}}
+  - {name: one_message_to_a_guest_and_a_person_without_a_stay, point: pre_tool_call, actor: owner, tool: message, args: {action: send, targets: ["+529980000102", "+529980000109"], message: "Mañana cortan el agua de 9 a 11"}, guest_permissions: maria_and_a_stranger, expect: {ask: auto_reply_others_off}}
+  - {name: one_message_to_a_guest_and_a_person_without_a_stay_both_switches_on, point: pre_tool_call, actor: owner, tool: message, args: {action: send, targets: ["+529980000102", "+529980000109"], message: "Mañana cortan el agua de 9 a 11"}, guest_permissions: maria_and_a_stranger_others_on, expect: {ask: review_owner_chat_message}}
+  - {name: the_owner_chat_writes_to_a_person_without_a_stay_with_the_others_switch_on, point: pre_tool_call, actor: owner, tool: message, args: {action: send, target: "+529980000109", message: "Hola"}, guest_permissions: no_stay_others_on, expect: {ask: review_owner_chat_message}}
+  - {name: pms_does_not_answer_at_the_call, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "El check-in es a las 15:00."}, guest_permissions: unreachable, expect: {ask: pms_unreachable}}
+
+  # --- Rule 4: no other person's data reaches a guest.
+  - {name: her_own_door_code_and_wifi, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Código 4821, Wi-Fi CasaCoral, clave arrecife-2026."}, guest_permissions: maria, expect: allow}
+  - {name: another_houses_door_code, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "El código de Casita es 7316."}, guest_permissions: maria, expect: {deny: other_persons_data}}
+  - {name: another_houses_wifi_with_spaces, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Clave: arrecife 2026 b"}, guest_permissions: maria, expect: {deny: other_persons_data}}
+  - {name: her_own_references, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Tu reserva E2E-1042 (Booking BK-4410021) está confirmada."}, guest_permissions: maria, expect: allow}
+  - {name: another_guests_reference, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "La reserva e2e 1051 es de Luis."}, guest_permissions: maria, expect: {deny: other_persons_data}}
+  - {name: another_guests_phone, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Luis: +52 998 000 0103"}, guest_permissions: maria, expect: {deny: other_persons_data}}
+  - {name: another_guests_phone_local_form, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Llama al 998-000-0103"}, guest_permissions: maria, expect: {deny: other_persons_data}}
+  - {name: the_hosts_personal_phone, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "El anfitrión: +7 999 000 0001"}, guest_permissions: maria, expect: {deny: other_persons_data}}
+  - {name: her_own_phone_and_the_business_phone, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Te escribimos al +52 998 000 0102 desde el 998 000 0300."}, guest_permissions: maria, expect: allow}
+  - {name: the_final_flag_is_a_send_argument, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Hi! How are you?", replyTo: "2A6699A2F01080B2D29D", final: true}, guest_permissions: maria, expect: allow}
+  - {name: a_message_id_is_no_phone, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Todo bien, gracias.", replyTo: "2AE74F3D65514557963B"}, guest_permissions: maria, expect: allow}
+  - {name: a_phone_in_the_caption_is_still_read, point: pre_tool_call, actor: maria, tool: message, args: {action: send, caption: "Luis: +52 998 000 0103", media: "https://files.example.com/f/a.jpg", replyTo: "2AE74F3D"}, guest_permissions: maria, expect: {deny: other_persons_data}}
+  - {name: a_payment_link_is_no_phone, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Paga aquí: https://pay.example.com/c/1f6e4b52-9a0d-4c11-8e2a-446655440000"}, guest_permissions: maria, expect: allow}
+  # Rule 4 matches a reference or secret as a whole value: the text's runs of
+  # letters and digits are its tokens, and a value matches when it equals one
+  # or more consecutive tokens, whatever separates them. A phone is 10 to 15
+  # digits joined by phone separators. What an assistant writes to guests:
+  - {name: es_payment_link_holding_another_code, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Aquí está tu link de pago: https://pay.example.com/c/7316b52a-9a0d-4c11-8e2a-446655440000"}, guest_permissions: maria, expect: allow}
+  - {name: es_price_holding_another_code, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "La noche cuesta 17316 pesos."}, guest_permissions: maria, expect: {"ask": "important_answer"}}
+  - {name: es_bank_transfer_clabe, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Transferencia a la CLABE 012180001234567891."}, guest_permissions: maria, expect: allow}
+  - {name: es_clabe_in_groups, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "CLABE: 0121 8000 1234 5678 91, BBVA, a nombre de Casa Coral."}, guest_permissions: maria, expect: allow}
+  - {name: es_card_number, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Puedes depositar en la tarjeta 4152 3138 0000 1234 (BBVA)."}, guest_permissions: maria, expect: {"ask": "important_answer"}}
+  - {name: es_dates_with_slashes, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Tu estancia es del 12/11/2026 al 15/11/2026."}, guest_permissions: maria, expect: allow}
+  - {name: es_dates_iso, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Llegada 2026-11-12, salida 2026-11-15."}, guest_permissions: maria, expect: allow}
+  - {name: es_dates_dotted_range, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Reservado: 12.11.2026 - 15.11.2026"}, guest_permissions: maria, expect: allow}
+  - {name: es_times_and_ranges, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Check-in a las 15:00, check-out a las 11:00; la limpieza es de 10:30-12:00 o de 9.00 a 11.30."}, guest_permissions: maria, expect: allow}
+  - {name: es_address, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Casa Coral: Calle 20 Norte 123, Puerto Morelos, Q.R. 77580."}, guest_permissions: maria, expect: allow}
+  - {name: es_coordinates, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Ubicación: 20.847812, -86.875534"}, guest_permissions: maria, expect: allow}
+  - {name: es_map_link, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Mapa: https://maps.google.com/?q=20.847812,-86.875534"}, guest_permissions: maria, expect: allow}
+  - {name: es_price_with_thousands, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Total: $12,500.00 MXN por 5 noches."}, guest_permissions: maria, expect: {"ask": "important_answer"}}
+  - {name: es_own_reference_spellings, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Tu reserva E2E-1042 (también e2e 1042 o E2E1042) está confirmada."}, guest_permissions: maria, expect: allow}
+  - {name: es_own_booking_number, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Booking: tu número de reserva es 4410021334, y BK 4410021."}, guest_permissions: maria, expect: allow}
+  - {name: es_own_door_code_and_wifi_spelled, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Código de la puerta: 48-21. Red: CasaCoral, clave ARRECIFE 2026."}, guest_permissions: maria, expect: allow}
+  - {name: es_business_number, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Para cualquier cosa escríbenos al +52 998 000 0300 o al +521 998 000 0300."}, guest_permissions: maria, expect: allow}
+  - {name: es_own_phone_in_legacy_form, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Tenemos tu número como +521 998 000 0102."}, guest_permissions: maria, expect: allow}
+  - {name: es_own_reference_in_a_payment_link, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Paga aquí: https://pay.example.com/c/1f6e4b52-9a0d-4c11-8e2a-446655440000?ref=E2E-1042"}, guest_permissions: maria, expect: allow}
+  - {name: es_a_folio_glued_to_another_code, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Tu folio de pago es 7316b52a."}, guest_permissions: maria, expect: allow}
+  - {name: en_dates_and_times, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Your stay: Nov 12-15, 2026. Check-in from 3:00 PM, check-out by 11:00 AM."}, guest_permissions: maria, expect: allow}
+  - {name: en_dates_us_format, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Dates: 11/12/2026 - 11/15/2026, 3 nights."}, guest_permissions: maria, expect: allow}
+  - {name: en_payment_link, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Here is your payment link: https://pay.example.com/c/7316b52a-9a0d-4c11-8e2a-446655440000"}, guest_permissions: maria, expect: allow}
+  - {name: en_wire_details, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Wire to CLABE 012 180 00123456789 1, bank BBVA Mexico, beneficiary Casa Coral."}, guest_permissions: maria, expect: allow}
+  - {name: en_price_with_thousands, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "The rate is 2,500 MXN per night, 7,500 MXN in total."}, guest_permissions: maria, expect: {"ask": "important_answer"}}
+  - {name: en_address_and_gps, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Address: Calle 20 Norte 123, Puerto Morelos 77580. GPS: 20.8478, -86.8755."}, guest_permissions: maria, expect: allow}
+  - {name: en_own_access, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Door code: 4821. Wi-Fi: CasaCoral, password: arrecife-2026. Booking ref E2E 1042."}, guest_permissions: maria, expect: allow}
+  - {name: en_business_number, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Reach us on WhatsApp at +52 (998) 000-0300."}, guest_permissions: maria, expect: allow}
+  - {name: ru_dates_and_times, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Заезд 12.11.2026 с 15:00, выезд 15.11.2026 до 11:00."}, guest_permissions: maria, expect: allow}
+  - {name: ru_short_dates_range, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Даты: 12.11.26 - 15.11.26, уборка 10.00-12.00."}, guest_permissions: maria, expect: allow}
+  - {name: ru_payment_link, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Ссылка на оплату: https://pay.example.com/c/7316b52a-9a0d-4c11-8e2a-446655440000"}, guest_permissions: maria, expect: allow}
+  - {name: ru_price_with_thousands, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Ночь стоит 2 500 MXN, итого 12 500 MXN."}, guest_permissions: maria, expect: {"ask": "important_answer"}}
+  - {name: ru_own_access, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Ваш код двери 4821, Wi-Fi CasaCoral, пароль arrecife-2026. Бронь E2E-1042 подтверждена."}, guest_permissions: maria, expect: allow}
+  - {name: ru_address, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Адрес: Calle 20 Norte 123, Пуэрто-Морелос, 77580. Координаты 20.847812, -86.875534."}, guest_permissions: maria, expect: allow}
+  - {name: ru_business_number, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Пишите нам: +52 998 000 03 00."}, guest_permissions: maria, expect: allow}
+  # Leaks in several spellings:
+  - {name: another_code_alone, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "7316"}, guest_permissions: maria, expect: {"deny": "other_persons_data"}}
+  - {name: another_code_spaced, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Prueba 73 16"}, guest_permissions: maria, expect: {"deny": "other_persons_data"}}
+  - {name: another_code_dashed, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "El código es 73-16."}, guest_permissions: maria, expect: {"deny": "other_persons_data"}}
+  - {name: another_code_in_a_sentence, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Prueba con 7316, debería abrir."}, guest_permissions: maria, expect: {"deny": "other_persons_data"}}
+  - {name: another_code_in_english, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "The door code is 7316."}, guest_permissions: maria, expect: {"deny": "other_persons_data"}}
+  - {name: another_code_in_russian, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Код двери: 7316."}, guest_permissions: maria, expect: {"deny": "other_persons_data"}}
+  - {name: another_code_in_a_caption, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "caption": "Código 7316", "media": "https://files.example.com/f/puerta.jpg"}, guest_permissions: maria, expect: {"deny": "other_persons_data"}}
+  - {name: another_code_in_a_link_query, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Abre aquí: https://example.com/acceso?code=7316"}, guest_permissions: maria, expect: {"deny": "other_persons_data"}}
+  - {name: another_code_in_a_link_query_with_more, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "https://example.com/acceso?code=7316&casa=casita"}, guest_permissions: maria, expect: {"deny": "other_persons_data"}}
+  - {name: another_wifi_in_capitals, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Wi-Fi: ARRECIFE-2026-B"}, guest_permissions: maria, expect: {"deny": "other_persons_data"}}
+  - {name: another_reference_glued, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Reserva e2e1051."}, guest_permissions: maria, expect: {"deny": "other_persons_data"}}
+  - {name: another_reference_spaced, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Reserva E2E 1051"}, guest_permissions: maria, expect: {"deny": "other_persons_data"}}
+  - {name: another_reference_in_brackets, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Luis (E2E-1051) llega mañana."}, guest_permissions: maria, expect: {"deny": "other_persons_data"}}
+  - {name: another_phone_local_spaced, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Su número es 998 000 0103."}, guest_permissions: maria, expect: {"deny": "other_persons_data"}}
+  - {name: another_phone_local_bracketed, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Call (998) 000-0103."}, guest_permissions: maria, expect: {"deny": "other_persons_data"}}
+  - {name: another_phone_plain_digits, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "9980000103"}, guest_permissions: maria, expect: {"deny": "other_persons_data"}}
+  - {name: another_phone_legacy_form, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Luis: +521 998 000 0103"}, guest_permissions: maria, expect: {"deny": "other_persons_data"}}
+  - {name: another_phone_legacy_form_compact, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "+5219980000103"}, guest_permissions: maria, expect: {"deny": "other_persons_data"}}
+  - {name: another_phone_e164, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "+529980000103"}, guest_permissions: maria, expect: {"deny": "other_persons_data"}}
+  - {name: another_phone_in_russian_grouping, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Телефон Луиса: +52 998 000 01 03"}, guest_permissions: maria, expect: {"deny": "other_persons_data"}}
+  - {name: another_phone_followed_by_a_number, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "9980000103 - 12345678"}, guest_permissions: maria, expect: {"deny": "other_persons_data"}}
+  # Her own value that contains another's covers it.
+  - {name: her_own_wifi_contains_another_houses, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Clave: arrecife-2026-b"}, guest_permissions: nested_wifi, expect: allow}
+  - {name: another_houses_wifi_inside_her_own_stem, point: pre_tool_call, actor: maria, tool: message, args: {"action": "send", "message": "Clave: arrecife-2026"}, guest_permissions: nested_wifi, expect: {"deny": "other_persons_data"}}
+
+  # --- Rule 5: an important answer to anyone but the owner is the owner's,
+  # from either chat.
+  - {name: a_discount, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Te damos un descuento."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: a_percent, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Hay 10 % menos esta semana."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: money, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "El traslado cuesta $500."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: money_from_the_owners_chat, point: pre_tool_call, actor: owner, tool: message, args: {action: send, target: "+529980000102", message: "Te devolvemos 500 pesos."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: money_from_the_owners_chat_to_a_person_without_a_stay, point: pre_tool_call, actor: owner, tool: message, args: {action: send, target: "+529980000109", message: "La noche cuesta $2,500."}, guest_permissions: no_stay_others_on, expect: {ask: important_answer}}
+  - {name: money_to_a_person_without_a_stay, point: pre_tool_call, actor: stranger, tool: message, args: {action: send, message: "La noche cuesta $2,500."}, guest_permissions: no_stay_others_on, expect: {ask: important_answer}}
+  # Rule 5 in the three languages the assistant writes. Money is a
+  # currency sign anywhere, a currency code or name, a price word, a
+  # number after a price verb, or a percent; an important word matches
+  # by stem at a word start, so its inflected forms count. A false ask
+  # costs the host one tap, a miss sends money talk without him: free
+  # parking, "feel free", a cancelled flight, the freezer and the return
+  # of the keys ask too.
+  - {name: rule5_en_dollars_in_words_after_the_amount, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "The tour is 80 dollars."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_es_euros_in_words, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Son 70 euros."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_es_euro_sign_after_the_amount, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Son 70 €."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_ru_rub_abbreviated, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Трансфер стоит 5000 руб."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_ru_ruble_sign_after_grouped_thousands, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Трансфер: 5 000 ₽"}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_en_rubles, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Transfer is 5000 rubles."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_ru_a_discount, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Сделаем скидку."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_ru_money_back, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Вернём деньги."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_es_amount_in_words, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Son mil doscientos pesos."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_es_dlls, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "El tour cuesta 80 dlls por persona."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_es_dollars_in_words, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Son ochenta dólares por persona."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_es_usd_code, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Son 80 USD por persona."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_es_code_glued_to_the_amount, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Total: 1500MXN."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_es_sign_with_a_no_break_space, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Son 70 € por noche."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_es_a_price, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "El precio incluye la limpieza."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_es_costs_a_bare_number, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "La clase de cocina cuesta 600."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_es_a_rate, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "La tarifa de temporada alta aplica desde diciembre."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_es_percent_in_words, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Te hacemos el diez por ciento menos."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_es_percent_with_a_no_break_space, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Hay 10 % menos esta semana."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_es_percent_as_emphasis, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Es 100% seguro."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_es_we_refund, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Te reembolsamos la noche."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_es_discounts, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Tenemos descuentos para estancias largas."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_es_a_rebate, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Te hago una rebaja."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_es_cancellation_is_free, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "La cancelación es gratuita hasta 48 horas antes."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_es_booking_cancelled, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Tu reserva quedó cancelada."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_es_free_breakfast, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "El desayuno es gratuito."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_es_free_parking, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Estacionamiento gratis en la calle."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_es_compensate, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Queremos compensarte por las molestias."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_es_return_of_the_deposit, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Haremos la devolución del depósito al salir."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_es_money_back, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Te devolvemos el dinero."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_es_flight_cancelled, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Vi que tu vuelo fue cancelado, ¿necesitas ayuda?"}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_es_deposit_to_a_card, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Puedes depositar en la tarjeta de la casa."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_en_euro_sign_after_the_amount, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "That is 70 € per night."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_en_pound_sign, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "The taxi is £40."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_en_usd_after_the_amount, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "It's 80 USD per person."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_en_bucks, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "About 20 bucks each way."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_en_a_fee, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "There is a late check-out fee."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_en_costs_a_bare_number, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "The boat tour costs 1200."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_en_a_price, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "The price includes breakfast."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_en_percent_in_words, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "We can take ten percent off."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_en_refunded, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "You will be refunded tomorrow."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_en_reimburse, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "We will reimburse the taxi."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_en_discounted, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "We offer a discounted rate for a week."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_en_cancellation, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Cancellation is possible until Friday."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_en_compensate, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "We will compensate you for the inconvenience."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_en_complimentary, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Late check-out is complimentary."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_en_waive, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "We can waive the cleaning."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_en_money_back, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "We will give your money back."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_en_security_deposit, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Your security deposit is returned at check-out."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_en_free_parking, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Free parking on the street."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_en_feel_free, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Feel free to write any time."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_en_flight_cancelled, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "I saw your flight was cancelled, can I help?"}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_en_freezer, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "The freezer is in the pantry."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_ru_rubles_in_words, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Это будет пять тысяч рублей."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_ru_r_abbreviated, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Трансфер 5000 р."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_ru_dollars, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Экскурсия стоит 80 долларов."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_ru_euros, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Ночь — 70 евро."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_ru_pesos, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Такси до аэропорта — 900 песо."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_ru_a_price, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Цена включает уборку."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_ru_the_cost, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Стоимость трансфера уточню."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_ru_costs_a_bare_number, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Трансфер стоит 5000."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_ru_percent_in_words, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Сделаем на десять процентов дешевле."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_ru_discounts, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Есть скидки на длинные заезды."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_ru_a_refund, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Оформим возврат за ночь."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_ru_prepayment_back, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Вернём предоплату."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_ru_booking_cancelled, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Бронь отменена."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_ru_cancellation_is_free, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Отмена бесплатна до пятницы."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_ru_we_compensate, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Компенсируем такси."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_ru_free_breakfast, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Завтрак бесплатный."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_ru_a_deposit, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Залог вернём при выезде."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_ru_an_extra_charge, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Доплата за поздний выезд."}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_ru_flight_cancelled, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Вижу, ваш рейс отменили. Чем помочь?"}, guest_permissions: maria, expect: {ask: important_answer}}
+  - {name: rule5_ru_return_of_the_keys, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Возврат ключей: оставьте их в ящике у двери."}, guest_permissions: maria, expect: {ask: important_answer}}
+  # Ordinary answers, and words that only begin like a money word.
+  - {name: rule5_es_times, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "El check-in es a las 3:00 p.m. y el check-out a las 11:00 a.m."}, guest_permissions: maria, expect: allow}
+  - {name: rule5_es_counts, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "La casa tiene 3 recámaras, 2 baños y 6 camas."}, guest_permissions: maria, expect: allow}
+  - {name: rule5_es_distance, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "La playa está a 200 metros, unos 5 minutos caminando."}, guest_permissions: maria, expect: allow}
+  - {name: rule5_es_a_lovely_view, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Tiene una vista preciosa al mar."}, guest_permissions: maria, expect: allow}
+  - {name: rule5_es_heavy_luggage, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Si traes equipaje pesado, te ayudamos."}, guest_permissions: maria, expect: allow}
+  - {name: rule5_es_european_plug, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Trae adaptador si tu enchufe es europeo."}, guest_permissions: maria, expect: allow}
+  - {name: rule5_es_the_coast, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Costa Mujeres está a 20 minutos."}, guest_permissions: maria, expect: allow}
+  - {name: rule5_es_return_the_keys, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Devuelve las llaves en la caja al salir."}, guest_permissions: maria, expect: allow}
+  - {name: rule5_es_downtown, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "El centro está a 10 minutos en coche."}, guest_permissions: maria, expect: allow}
+  - {name: rule5_en_times, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Check-in is at 3 PM, check-out by 11 AM."}, guest_permissions: maria, expect: allow}
+  - {name: rule5_en_counts, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "The house sleeps 6: 3 bedrooms, 2 bathrooms."}, guest_permissions: maria, expect: allow}
+  - {name: rule5_en_european_adapter, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Bring a European adapter if you need one."}, guest_permissions: maria, expect: allow}
+  - {name: rule5_en_the_coast_road, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "The coast road is 10 minutes away."}, guest_permissions: maria, expect: allow}
+  - {name: rule5_en_town_center, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "The town center is a 5-minute walk."}, guest_permissions: maria, expect: allow}
+  - {name: rule5_en_a_room_number, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Your room is number 12, on floor 2."}, guest_permissions: maria, expect: allow}
+  - {name: rule5_ru_the_center, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "До центра 10 минут пешком."}, guest_permissions: maria, expect: allow}
+  - {name: rule5_ru_worth_visiting, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Стоит посетить сенот рядом с домом."}, guest_permissions: maria, expect: allow}
+  - {name: rule5_ru_sand, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Песок на пляже белый, вода тёплая."}, guest_permissions: maria, expect: allow}
+  - {name: rule5_ru_european_plug, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Розетки американские, для европейской вилки нужен переходник."}, guest_permissions: maria, expect: allow}
+  - {name: rule5_ru_counts_and_times, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "В доме 3 спальни, заезд с 15:00, выезд до 11:00."}, guest_permissions: maria, expect: allow}
+  - {name: rule5_ru_a_shirt, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Возьмите рубашку с длинным рукавом от комаров."}, guest_permissions: maria, expect: allow}
+  - {name: a_reference_split_across_fields_is_scanned_per_field, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "E2E-10", filename: "51"}, guest_permissions: maria, expect: allow}
+  - {name: a_leak_outranks_a_question, point: pre_tool_call, actor: maria, tool: message, args: {action: send, message: "Reembolso para la reserva E2E-1051."}, guest_permissions: maria, expect: {deny: other_persons_data}}
+
+  # --- The owner's own chat: anything may reach him.
+  - {name: owner_hears_any_data, point: pre_tool_call, actor: owner, tool: message, args: {action: send, message: "Luis +529980000103, código 7316, reembolso de $500."}, expect: allow}

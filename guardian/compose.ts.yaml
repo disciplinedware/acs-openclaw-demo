@@ -1,0 +1,20 @@
+# The ACS TypeScript Guardian, with PR #229. Selected by GUARDIAN=ts in .env.
+services:
+  acs-guardian:
+    build:
+      context: ./guardian/ts
+      additional_contexts:
+        acs: https://github.com/disciplinedware/agent-control-standard.git?branch=refimpl/openclaw-adapter&checksum=56e70c85000e536e50ecd23ef301327e10c90cef
+    tmpfs: [/tmp]
+    environment:
+      ACS_GUARDIAN_HOST: 0.0.0.0
+      ACS_GUARDIAN_PORT: "8787"
+      ACS_HMAC_KEY_ID: pms-concierge
+      ACS_MANIFEST_PATH: /deployment/policy/manifest.yaml
+      ACS_ENVELOPE_LOG: /data/envelopes.jsonl
+      ACS_SESSION_CONTEXT_LOG: /data/session-context.jsonl
+      ACS_ON_DECISION_FAILURE: deny
+    volumes:
+      # The Guardian reads mapping.yaml beside its package; ours replaces it.
+      - {type: volume, source: guardian-deployment, target: /acs/reference-implementations/agt/mapping.yaml, read_only: true, volume: {subpath: mapping.yaml}}
+

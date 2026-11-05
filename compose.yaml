@@ -1,0 +1,150 @@
+name: acs-openclaw-demo
+
+# The demo stack: the fake PMS (a booking system with its MCP server `pms`),
+# an ACS Guardian with the host assistant's rules (Go or TypeScript, GUARDIAN in .env), and OpenClaw with the
+# ACS adapter and the WhatsApp plugin. `make up` builds on the pinned official
+# OpenClaw image and starts the stack; nothing is published on a host port.
+#
+# Pinned base image and sources:
+#   OpenClaw                          ghcr.io/openclaw/openclaw, release 2026.10.9, pinned by digest
+#   WhatsApp plugin                   github.com/disciplinedware/openclaw, branch whatsapp-for-business-2026.10.9:
+#                                     whatsapp-for-business; runtime changes stay in extensions/whatsapp
+#   ACS OpenClaw adapter              github.com/disciplinedware/agent-control-standard
+#   ACS Guardians                     github.com/disciplinedware/agent-control-standard (guardian/compose.*.yaml)
+x-whatsapp-plugin-source: &whatsapp-plugin-source https://github.com/disciplinedware/openclaw.git?branch=whatsapp-for-business-2026.10.9&checksum=40ebdea77a0de29036541a5e9c523f8fe4dfb4bb
+
+services:
+  fake-pms:
+    build: ./fake-pms
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    environment:
+      PMS_LISTEN_ADDR: ":8080"
+      PMS_BOOKINGS_FILE: /data/bookings.json
+      PMS_API_KEY: ${PMS_API_KEY:?PMS_API_KEY is required (make up generates it)}
+      PMS_READ_HEADER_TIMEOUT: 10s
+      PMS_READ_TIMEOUT: 30s
+      PMS_WRITE_TIMEOUT: 30s
+      PMS_IDLE_TIMEOUT: 2m
+      PMS_SHUTDOWN_GRACE: 10s
+      PMS_RELOAD_INTERVAL: 2s
+      # The stage guest's phone: reservation CC-1042 belongs to it.
+      GUEST_PHONE: ${GUEST_PHONE:-}
+      SECOND_GUEST_PHONE: ${SECOND_GUEST_PHONE:-}
+    volumes:
+      # Re-read when it changes; replace the file whole (write a copy, then rename).
+      - type: bind
+        source: ./fake-pms/data
+        target: /data
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "/app/fake-pms", "healthcheck"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  # Renders .env into the Guardian's deployment and OpenClaw's configuration,
+  # then exits; the Guardian and OpenClaw start after it.
+  setup:
+    image: acs-openclaw-demo-openclaw
+    pull_policy: never
+    user: root
+    entrypoint: ["bash", "/opt/demo/setup.sh"]
+    network_mode: none
+    environment:
+      HOST_PHONE: ${HOST_PHONE:?HOST_PHONE is required (.env)}
+      BUSINESS_PHONE: ${BUSINESS_PHONE:?BUSINESS_PHONE is required (.env)}
+      ALLOW_FROM: ${ALLOW_FROM:-}
+      AGENT_MODEL: ${AGENT_MODEL:?AGENT_MODEL is required (.env)}
+      HOST_AGENT_MODEL: ${HOST_AGENT_MODEL:?HOST_AGENT_MODEL is required (.env)}
+      OPENCLAW_EXEC_TOOL: ${OPENCLAW_EXEC_TOOL:-on}
+      OPENCLAW_ACS_ADAPTER: ${OPENCLAW_ACS_ADAPTER:-on}
+      PMS_URL: http://fake-pms:8080
+      PMS_API_KEY: ${PMS_API_KEY:?PMS_API_KEY is required (make up generates it)}
+      # The distroless image's nonroot user, which the Guardian runs as.
+      GUARDIAN_UID: "65532"
+    volumes:
+      - openclaw-setup:/setup/openclaw
+      - guardian-deployment:/setup/guardian
+      - openclaw-memory:/setup/memory
+      # Read by `make audit`.
+      - guardian-audit:/setup/audit:ro
+
+  # The Guardian's image and start come from guardian/compose.<GUARDIAN>.yaml.
+  acs-guardian:
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    secrets:
+      - acs-hmac
+    volumes:
+      - guardian-deployment:/deployment:ro
+      - guardian-audit:/data
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+      fake-pms:
+        condition: service_healthy
+
+  openclaw:
+    image: acs-openclaw-demo-openclaw
+    build:
+      context: ./openclaw
+      additional_contexts:
+        # See docs/workflow.md: both build modes use the official 2026.10.9 image.
+        openclaw-core: docker-image://ghcr.io/openclaw/openclaw:2026.10.9@sha256:1a2a3ce113e435039dbeac5ae261759bb4759908563d91c81059e896b38c5d98
+        whatsapp-plugin-src: *whatsapp-plugin-source
+        acs: https://github.com/disciplinedware/agent-control-standard.git?branch=refimpl/openclaw-adapter&checksum=56e70c85000e536e50ecd23ef301327e10c90cef
+        guardian: ./guardian
+    entrypoint: ["tini", "-s", "--", "bash", "/usr/local/bin/openclaw-session", "node", "/app/docker-entrypoint.mjs"]
+    command: ["node", "openclaw.mjs", "gateway"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    environment:
+      OPENCLAW_CONFIG_READONLY: "1"
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:?OPENCLAW_GATEWAY_TOKEN is required (make up generates it)}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      PMS_MCP_URL: http://fake-pms:8080/mcp
+      PMS_API_KEY: ${PMS_API_KEY:?PMS_API_KEY is required (make up generates it)}
+    secrets:
+      - acs-hmac
+    volumes:
+      - openclaw-state:/home/node/.openclaw
+      # OpenClaw reads its configuration at its standard path; plugin skills
+      # land beside it, in the state volume.
+      - {type: volume, source: openclaw-setup, target: /home/node/.openclaw/openclaw.json, read_only: true, volume: {subpath: openclaw.json}}
+      - {type: volume, source: openclaw-setup, target: /home/node/.openclaw/guardian.json, read_only: true, volume: {subpath: guardian.json}}
+      # The agents' instructions, read from this checkout: `make restart` after an edit.
+      - ./openclaw/workspace:/opt/demo/workspace:ro
+      - ./openclaw/workspace-host:/opt/demo/workspace-host:ro
+      - openclaw-memory:/opt/demo/workspace-host/memory
+    healthcheck:
+      test: ["CMD", "node", "dist/docker-healthcheck.js"]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+      start_period: 900s
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+      acs-guardian:
+        condition: service_started
+
+secrets:
+  # Written by `make up` (scripts/env.sh): standard base64 of 32 random bytes.
+  acs-hmac:
+    file: ./.secrets/acs-hmac
+
+volumes:
+  openclaw-state:
+  openclaw-setup:
+  openclaw-memory:
+  guardian-deployment:
+  guardian-audit:

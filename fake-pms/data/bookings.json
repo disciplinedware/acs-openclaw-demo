@@ -1,0 +1,81 @@
+{
+  "business_name": "Casa Coral",
+  "auto_reply": {"guests": true, "others": false},
+  "access_lead_hours": 2,
+  "listings": [
+    {
+      "id": "2f6a9c1e-5b3d-4c8a-9e10-000000000001",
+      "name": "Casa Coral",
+      "address": "Calle Arrecife 12, Colonia Pescadores",
+      "latitude": 20.8476,
+      "longitude": -86.8755,
+      "city": "Puerto Morelos",
+      "state": "Quintana Roo",
+      "country_code": "MX",
+      "time_zone": "America/Cancun",
+      "person_capacity": 6,
+      "check_in_time": "15:00",
+      "check_out_time": "11:00",
+      "guest_guide": "Check-in from 15:00, check-out until 11:00.\nSelf check-in with a door code; nobody meets you at the house.\nThe door code and Wi-Fi are available in this chat from two hours before check-in on the arrival day.\nNeed help on arrival? Write here and we answer quickly.\nParking: free, on site, for two cars inside the gate.\nBeach: public access a short walk away, at the end of Calle Arrecife.\nQuiet hours from 22:00. No parties. Pets on request.\nTrash goes to the bins by the gate; collection is on Monday and Thursday.\n",
+      "door_code": "4821",
+      "wifi_name": "CasaCoral",
+      "wifi_password": "arrecife-2026"
+    },
+    {
+      "id": "2f6a9c1e-5b3d-4c8a-9e10-000000000002",
+      "name": "Casita Coral",
+      "address": "Calle Arrecife 12-B, Colonia Pescadores",
+      "latitude": 20.84765,
+      "longitude": -86.87545,
+      "city": "Puerto Morelos",
+      "state": "Quintana Roo",
+      "country_code": "MX",
+      "time_zone": "America/Cancun",
+      "person_capacity": 2,
+      "check_in_time": "15:00",
+      "check_out_time": "11:00",
+      "guest_guide": "The studio behind Casa Coral, through the side gate.\nCheck-in from 15:00, check-out until 11:00.\nSelf check-in with a door code; nobody meets you at the house.\nThe door code and Wi-Fi are available in this chat from two hours before check-in on the arrival day.\nNeed help on arrival? Write here and we answer quickly.\nParking: on the street in front of the gate.\nQuiet hours from 22:00.\n",
+      "door_code": "7316",
+      "wifi_name": "CasitaCoral",
+      "wifi_password": "arrecife-2026-b"
+    },
+    {
+      "id": "2f6a9c1e-5b3d-4c8a-9e10-000000000003",
+      "name": "Depto Cancún",
+      "address": "Calle Laguna 8, depto 902, Supermanzana 3",
+      "latitude": 21.1619,
+      "longitude": -86.8515,
+      "city": "Cancún",
+      "state": "Quintana Roo",
+      "country_code": "MX",
+      "time_zone": "America/Cancun",
+      "person_capacity": 4,
+      "check_in_time": "15:00",
+      "check_out_time": "11:00",
+      "guest_guide": "Ninth floor, apartment 902; the doorman lets you in and the elevator is on the left.\nCheck-in from 15:00, check-out until 11:00.\nThe apartment door opens with a code; nobody meets you at the apartment.\nThe door code and Wi-Fi are available in this chat from two hours before check-in on the arrival day.\nNeed help on arrival? Write here and we answer quickly.\nParking: one covered space in the basement, number 902.\nPool on the ground floor, open 8:00 to 21:00.\nQuiet hours from 22:00.\n",
+      "door_code": "5290",
+      "wifi_name": "DeptoCancun",
+      "wifi_password": "laguna-2026"
+    }
+  ],
+  "extras": [
+    {"code": "airport-transfer", "name": "Traslado desde el aeropuerto", "description": "Camioneta privada del aeropuerto de Cancún a Casa Coral, hasta seis personas con equipaje.", "price": 1200, "currency": "MXN"},
+    {"code": "cenote-tour", "name": "Tour de cenotes", "description": "Tour de medio día a dos cenotes de la Ruta de los Cenotes, con guía y equipo de esnórquel.", "price": 1800, "currency": "MXN"}
+  ],
+  "reservations": [
+    {"reservation_ref": "CC-1041", "channel_reservation_id": "HM-88213", "listing_id": "2f6a9c1e-5b3d-4c8a-9e10-000000000001", "kind": "stay", "status": "checked_out", "guest_name": "Javier Ruiz", "guest_phone": "+447700900103", "guest_language": "es", "adults": 3, "check_in": "2026-10-22", "check_out": "2026-10-26", "total_price": 8400, "currency": "MXN", "is_paid": true},
+    {"reservation_ref": "CC-1042", "channel_reservation_id": "BK-4410021", "listing_id": "2f6a9c1e-5b3d-4c8a-9e10-000000000001", "kind": "stay", "status": "confirmed", "guest_name": "Maria Gonzalez", "guest_phone": "+447700900100", "guest_phone_env": "GUEST_PHONE", "guest_language": "es", "adults": 2, "child_ages": [7, 4], "check_in": "2026-11-11", "check_out": "2026-11-13", "total_price": 6400, "currency": "MXN", "is_paid": true},
+    {"reservation_ref": "CC-1044", "channel_reservation_id": "D-0007", "listing_id": "2f6a9c1e-5b3d-4c8a-9e10-000000000001", "kind": "stay", "status": "confirmed", "guest_name": "Luis Herrera", "guest_phone": "+447700900101", "guest_language": "es", "adults": 4, "check_in": "2026-11-14", "check_out": "2026-11-18", "total_price": 12800, "currency": "MXN", "is_paid": false},
+    {"reservation_ref": "CC-1047", "channel_reservation_id": "BK-4410187", "listing_id": "2f6a9c1e-5b3d-4c8a-9e10-000000000001", "kind": "stay", "status": "confirmed", "guest_name": "Sofia Miller", "guest_phone": "+447700900102", "guest_language": "en", "adults": 2, "child_ages": [10], "check_in": "2026-11-19", "check_out": "2026-11-23", "total_price": 640, "currency": "USD", "is_paid": true},
+    {"reservation_ref": "CC-1052", "channel_reservation_id": "HM-88702", "listing_id": "2f6a9c1e-5b3d-4c8a-9e10-000000000001", "kind": "stay", "status": "confirmed", "guest_name": "Familia Ramírez", "guest_phone": "+447700900106", "guest_language": "es", "adults": 4, "child_ages": [12, 9], "check_in": "2026-11-23", "check_out": "2026-11-27", "total_price": 12800, "currency": "MXN", "is_paid": true},
+    {"reservation_ref": "CC-1053", "channel_reservation_id": "BK-4410388", "listing_id": "2f6a9c1e-5b3d-4c8a-9e10-000000000001", "kind": "stay", "status": "confirmed", "guest_name": "Andrea Castillo", "guest_phone": "+447700900111", "guest_language": "es", "adults": 2, "check_in": "2026-12-05", "check_out": "2026-12-09", "total_price": 9600, "currency": "MXN", "is_paid": true},
+    {"reservation_ref": "CC-1054", "channel_reservation_id": "HM-88745", "listing_id": "2f6a9c1e-5b3d-4c8a-9e10-000000000001", "kind": "stay", "status": "confirmed", "guest_name": "Familia Herrera", "guest_phone": "+447700900112", "guest_language": "es", "adults": 4, "child_ages": [7], "check_in": "2026-12-20", "check_out": "2026-12-27", "total_price": 22400, "currency": "MXN", "is_paid": false},
+    {"reservation_ref": "CC-1043", "channel_reservation_id": "BK-4410022", "listing_id": "2f6a9c1e-5b3d-4c8a-9e10-000000000002", "kind": "stay", "status": "checked_in", "guest_name": "Carlos Medina", "guest_phone": "+447700900107", "guest_language": "es", "adults": 2, "check_in": "2026-11-09", "check_out": "2026-11-12", "total_price": 4800, "currency": "MXN", "is_paid": true},
+    {"reservation_ref": "CC-1045", "channel_reservation_id": "HM-88540", "listing_id": "2f6a9c1e-5b3d-4c8a-9e10-000000000002", "kind": "stay", "status": "confirmed", "guest_name": "María López", "guest_phone": "+447700900110", "guest_phone_env": "SECOND_GUEST_PHONE", "guest_language": "es", "adults": 2, "check_in": "2026-11-12", "check_out": "2026-11-15", "total_price": 4800, "currency": "MXN", "is_paid": true},
+    {"reservation_ref": "CC-1051", "listing_id": "2f6a9c1e-5b3d-4c8a-9e10-000000000002", "kind": "block", "status": "confirmed", "check_in": "2026-11-15", "check_out": "2026-11-17"},
+    {"reservation_ref": "CC-1049", "channel_reservation_id": "HM-88611", "listing_id": "2f6a9c1e-5b3d-4c8a-9e10-000000000002", "kind": "stay", "status": "confirmed", "guest_name": "Julia Schmidt", "guest_phone": "+447700900108", "guest_language": "en", "adults": 1, "check_in": "2026-11-17", "check_out": "2026-11-22", "total_price": 400, "currency": "USD", "is_paid": true},
+    {"reservation_ref": "CC-1046", "channel_reservation_id": "HM-88577", "listing_id": "2f6a9c1e-5b3d-4c8a-9e10-000000000003", "kind": "stay", "status": "checked_in", "guest_name": "Andrea López", "guest_phone": "+447700900109", "guest_language": "es", "adults": 3, "check_in": "2026-11-10", "check_out": "2026-11-13", "total_price": 6900, "currency": "MXN", "is_paid": true},
+    {"reservation_ref": "CC-1048", "channel_reservation_id": "VR-3318204", "listing_id": "2f6a9c1e-5b3d-4c8a-9e10-000000000003", "kind": "stay", "status": "confirmed", "guest_name": "Emma Wilson", "guest_phone": "+447700900104", "guest_language": "en", "adults": 2, "check_in": "2026-11-13", "check_out": "2026-11-18", "total_price": 650, "currency": "USD", "is_paid": true},
+    {"reservation_ref": "CC-1050", "channel_reservation_id": "EX-71950433", "listing_id": "2f6a9c1e-5b3d-4c8a-9e10-000000000003", "kind": "stay", "status": "confirmed", "guest_name": "Paola Sánchez", "guest_phone": "+447700900105", "guest_language": "es", "adults": 3, "check_in": "2026-11-20", "check_out": "2026-11-25", "total_price": 11500, "currency": "MXN", "is_paid": false}
+  ]
+}

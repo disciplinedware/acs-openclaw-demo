@@ -1,0 +1,31 @@
+# Phone normalization vectors, read by the rules' tests (guardian/test.sh) and
+# the fake PMS's tests. `e164: null` means invalid: the rules deny. A number
+# written with `+` names its own country; the rules read 10 digits without `+`
+# as Mexican. The fake PMS's phone parameters accept only a number with its `+`
+# country code, so it refuses every vector without `+`.
+vectors:
+  - {name: e164, input: "+529980000102", e164: "+529980000102"}
+  - {name: ten_digits_spaced, input: "998 000 0102", e164: "+529980000102"}
+  - {name: ten_digits_dashed, input: "998-000-0102", e164: "+529980000102"}
+  - {name: ten_digits_dotted_parens, input: "(998) 000.0102", e164: "+529980000102"}
+  - {name: twelve_digits_no_plus, input: "529980000102", e164: "+529980000102"}
+  - {name: legacy_mobile_521, input: "+5219980000102", e164: "+529980000102"}
+  - {name: legacy_mobile_521_spaced, input: "+52 1 998 000 0102", e164: "+529980000102"}
+  - {name: nine_digits, input: "998000010", e164: null}
+  - {name: eleven_digits, input: "99800001023", e164: null}
+  - {name: twelve_digits_not_52, input: "539980000102", e164: null}
+  - {name: thirteen_digits_not_521, input: "5229980000102", e164: null}
+  - {name: fourteen_digits, input: "52199800001023", e164: null}
+  - {name: us_number, input: "+1 512 555 0104", e164: "+15125550104"}
+  - {name: plus_ten_digits_foreign, input: "+354 998 0102", e164: "+3549980102"}
+  - {name: plus_ten_digits_national, input: "+998 000 0102", e164: "+9980000102"}
+  - {name: uk_mobile, input: "+44 7700 900 123", e164: "+447700900123"}
+  - {name: plus_52_too_short, input: "+52 998 000 010", e164: null}
+  - {name: plus_521_too_long, input: "+52 1 998 000 01023", e164: null}
+  - {name: plus_seven_digits, input: "+1234567", e164: null}
+  - {name: plus_sixteen_digits, input: "+1234567890123456", e164: null}
+  - {name: plus_leading_zero, input: "+0 998 000 0102", e164: null}
+  - {name: e164_spaced, input: "+52 998 000 0102", e164: "+529980000102"}
+  - {name: plus_inside, input: "52+9980000102", e164: null}
+  - {name: letters, input: "998 000 01O2", e164: null}
+  - {name: empty, input: "", e164: null}
